@@ -1,6 +1,6 @@
 Starts an RTSP server streaming moving aruco markers:
 
-![images/aruco.png]
+![aruco marker](images/marker.png)
 
 To build:
 
