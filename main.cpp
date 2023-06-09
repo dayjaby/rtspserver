@@ -1,22 +1,3 @@
-/* GStreamer
- * Copyright (C) 2008 Wim Taymans <wim.taymans at gmail.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Library General Public
- * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Library General Public License for more details.
- *
- * You should have received a copy of the GNU Library General Public
- * License along with this library; if not, write to the
- * Free Software Foundation, Inc., 51 Franklin St, Fifth Floor,
- * Boston, MA 02110-1301, USA.
- */
-
 #include <gst/gst.h>
 
 #include <gst/rtsp-server/rtsp-server.h>
@@ -32,7 +13,7 @@ using namespace cv;
 
 typedef struct
 {
-    int ctr;
+  int ctr;
   GstClockTime timestamp;
   Ptr<aruco::Dictionary> dictionary;
   Ptr<aruco::GridBoard> board;
@@ -47,17 +28,14 @@ int markerSize = 100;
 
 #define PI 3.14159265
 
-
 /* called when we need to give data to appsrc */
-static void
-need_data (GstElement * appsrc, guint unused, MyContext * ctx)
+static void need_data (GstElement * appsrc, guint unused, MyContext * ctx)
 {
   GstBuffer *buffer;
   guint size;
   GstFlowReturn ret;
 
-  // Mat boardImage(385, 288, CV_8UC1, Scalar(0, 0, 0));
-  Mat boardImage = Mat(384, 288, CV_8UC1, Scalar::all(255));
+  cv::Mat boardImage = cv::Mat(384, 288, CV_8UC1, Scalar::all(255));
   cv::Mat ar_img;
   cv::aruco::drawMarker(ctx->dictionary, ctx->ctr % 10 > 5 ? 1 : 0, markerSize, ar_img);
 
@@ -65,6 +43,7 @@ need_data (GstElement * appsrc, guint unused, MyContext * ctx)
   // double scale = 1.0;
   // cv::Mat mat = getRotationMatrix2D( cv::Point(markerSize * 1.5, markerSize * 1.5), angle, scale );
 
+  // perform a affine translation with different scaling/skewing/shifting
   double xscale = 1.0 + 0.1 * cos(ctx->ctr*PI/180.0);
   double yscale = 1.0 + 0.1 * sin((1.3*ctx->ctr+22)*PI/180.0);
   double xskew = 0.0 + 0.5 * cos(0.3*ctx->ctr*PI/180.0);
@@ -123,13 +102,15 @@ media_configure (GstRTSPMediaFactory * factory, GstRTSPMedia * media,
           "height", G_TYPE_INT, 384,
           "framerate", GST_TYPE_FRACTION, 0, 1, NULL), NULL);
 
+  /* prepare our custom context */
   ctx = g_new0 (MyContext, 1);
   ctx->dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
   ctx->board = aruco::GridBoard::create(2, 1, 0.04f, 0.01f, ctx->dictionary);
 
   ctx->ctr = 0;
   ctx->timestamp = 0;
-  /* make sure ther datais freed when the media is gone */
+
+  /* make sure ther data is freed when the media is gone */
   g_object_set_data_full (G_OBJECT (media), "my-extra-data", ctx,
       (GDestroyNotify) g_free);
 
