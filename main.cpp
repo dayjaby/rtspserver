@@ -26,11 +26,13 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/aruco.hpp>
 
+#include <cmath>
+
 using namespace cv;
 
 typedef struct
 {
-  gboolean white;
+    int ctr;
   GstClockTime timestamp;
   Ptr<aruco::Dictionary> dictionary;
   Ptr<aruco::GridBoard> board;
@@ -41,6 +43,9 @@ Size imageSize{384,288};
 int dictionaryId = 10;
 int margin = 10;
 int borderBits = 1;
+int markerSize = 100;
+
+#define PI 3.14159265
 
 
 /* called when we need to give data to appsrc */
@@ -54,52 +59,39 @@ need_data (GstElement * appsrc, guint unused, MyContext * ctx)
   // Mat boardImage(385, 288, CV_8UC1, Scalar(0, 0, 0));
   Mat boardImage = Mat(384, 288, CV_8UC1, Scalar::all(255));
   cv::Mat ar_img;
-  cv::aruco::drawMarker(ctx->dictionary, ctx->white ? 1 : 0, 100, ar_img);
-  // cv::Mat mat = (cv::Mat_<double>(2,3)<<1.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-  double angle = -50.0;
-  double scale = 1.0;
-  cv::Mat mat = getRotationMatrix2D( center, angle, scale );
+  cv::aruco::drawMarker(ctx->dictionary, ctx->ctr % 10 > 5 ? 1 : 0, markerSize, ar_img);
+
+  // double angle = -50.0;
+  // double scale = 1.0;
+  // cv::Mat mat = getRotationMatrix2D( cv::Point(markerSize * 1.5, markerSize * 1.5), angle, scale );
+
+  double xscale = 1.0 + 0.1 * cos(ctx->ctr*PI/180.0);
+  double yscale = 1.0 + 0.1 * sin((1.3*ctx->ctr+22)*PI/180.0);
+  double xskew = 0.0 + 0.5 * cos(0.3*ctx->ctr*PI/180.0);
+  double yskew = 0.0 + 0.5 * sin((1.3*ctx->ctr+55)*PI/180.0);
+  double xshift = 100.0 + 0.7 * cos(3*ctx->ctr*PI/180.0);
+  double yshift = 100.0 + 0.7 * cos(3*ctx->ctr*PI/180.0);
+  cv::Mat mat = (cv::Mat_<double>(2,3)<<xscale, xskew, xshift, yskew, yscale, yshift);
   cv::warpAffine(ar_img, boardImage, mat, boardImage.size(), cv::INTER_LINEAR, cv::BORDER_TRANSPARENT);
-  // cv::Rect roi( cv::Point( 0, 0 ), ar_img.size() );
-  // ar_img.copyTo(boardImage(roi));
+
   cv::Mat rgb_img;
   cv::Mat yuv_img;
   cv::cvtColor(boardImage, rgb_img, cv::COLOR_GRAY2RGB);
   cv::cvtColor(rgb_img, yuv_img, cv::COLOR_RGB2YUV_I420);
 
-  // ctx->board->draw(imageSize, boardImage, margin, borderBits);
   size = yuv_img.total() * yuv_img.elemSize();
   buffer = gst_buffer_new_allocate (NULL, size, NULL);
-
-  // boardImage = Scalar(ctx->white ? 0xFF : 0x00, ctx->white ? 0x0A : 0xCF, ctx->white ? 0x6C : 0x13);
 
   guchar* data1 = yuv_img.data;
   GstMapInfo map;
   gst_buffer_map (buffer, &map, GST_MAP_WRITE);
-  // memcpy( (guchar *)map.data, data1,  gst_buffer_get_size( buffer ) );
   memcpy( (guchar *)map.data, data1, size);
 
-  /* this makes the image black/white */
-  // gst_buffer_memset (buffer, 0, ctx->white ? 0xff : 0x0, size);
-  
-  /*
-  GstMemory* wrapped_mem1 = gst_memory_new_wrapped(
-        (GstMemoryFlags)0,
-        (gpointer)boardImage.data,
-        size,
-        0,
-        size,
-        NULL,
-        NULL // (GDestroyNotify)g_free
-  );
-  gst_buffer_append_memory(buffer, wrapped_mem1);
-  */
+  ctx->ctr++;
 
-  ctx->white = !ctx->white;
-
-  /* increment the timestamp every 1/2 second */
+  /* increment the timestamp every 1/5 second */
   GST_BUFFER_PTS (buffer) = ctx->timestamp;
-  GST_BUFFER_DURATION (buffer) = gst_util_uint64_scale_int (1, GST_SECOND, 2);
+  GST_BUFFER_DURATION (buffer) = gst_util_uint64_scale_int (1, GST_SECOND, 15);
   ctx->timestamp += GST_BUFFER_DURATION (buffer);
 
   g_signal_emit_by_name (appsrc, "push-buffer", buffer, &ret);
@@ -135,7 +127,7 @@ media_configure (GstRTSPMediaFactory * factory, GstRTSPMedia * media,
   ctx->dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
   ctx->board = aruco::GridBoard::create(2, 1, 0.04f, 0.01f, ctx->dictionary);
 
-  ctx->white = FALSE;
+  ctx->ctr = 0;
   ctx->timestamp = 0;
   /* make sure ther datais freed when the media is gone */
   g_object_set_data_full (G_OBJECT (media), "my-extra-data", ctx,
